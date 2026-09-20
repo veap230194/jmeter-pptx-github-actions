@@ -54,6 +54,36 @@
             </collectionProp>
           </HeaderManager>
           <hashTree/>
+          <JSR223Assertion guiclass="TestBeanGUI" testclass="JSR223Assertion" testname="Detener tras 180 segundos sin respuestas exitosas">
+            <stringProp name="scriptLanguage">groovy</stringProp>
+            <stringProp name="parameters"></stringProp>
+            <stringProp name="filename"></stringProp>
+            <stringProp name="cacheKey">true</stringProp>
+            <stringProp name="script"><![CDATA[
+long now = System.currentTimeMillis()
+long limitMs = Long.parseLong(props.getProperty('MAX_NO_SUCCESS_SECONDS', '180')) * 1000L
+
+synchronized (props) {
+    String stored = props.getProperty('LAST_SUCCESS_OR_START_MS')
+    long lastSuccessOrStart = stored ? Long.parseLong(stored) : now
+
+    if (stored == null) {
+        props.setProperty('LAST_SUCCESS_OR_START_MS', Long.toString(now))
+    }
+
+    if (prev.isSuccessful()) {
+        props.setProperty('LAST_SUCCESS_OR_START_MS', Long.toString(now))
+    } else if (now - lastSuccessOrStart >= limitMs) {
+        String reason = "Prueba detenida: ${limitMs / 1000L} segundos sin respuestas exitosas. Último código HTTP: ${prev.getResponseCode()} ${prev.getResponseMessage()}"
+        props.setProperty('FAIL_FAST_REASON', reason)
+        new File('output/fail-fast.txt').text = reason + System.lineSeparator()
+        log.error(reason)
+        prev.setStopTestNow(true)
+    }
+}
+            ]]></stringProp>
+          </JSR223Assertion>
+          <hashTree/>
           <ResultCollector guiclass="ViewResultsFullVisualizer" testclass="ResultCollector" testname="View Results Tree">
             <boolProp name="ResultCollector.error_logging">false</boolProp>
             <objProp>
@@ -88,7 +118,7 @@
                 <connectTime>true</connectTime>
               </value>
             </objProp>
-            <stringProp name="filename">C:\Users\enriq\Downloads\results.jtl</stringProp>
+            <stringProp name="filename"></stringProp>
           </ResultCollector>
           <hashTree/>
         </hashTree>

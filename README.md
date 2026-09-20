@@ -34,9 +34,18 @@ ${__P(RAPIDAPI_KEY,)}
 2. Elegir **JMeter performance test and PPTX report**.
 3. Seleccionar **Run workflow**.
 4. Ingresar usuarios, ramp-up, duración, iteraciones y usuario objetivo.
+   Para programar el inicio, completar opcionalmente `scheduled_start` con el formato
+   `AAAA-MM-DD HH:MM` en horario `America/Lima`. La hora puede estar hasta 4 horas en el futuro.
 5. Descargar `performance-report-<número>` desde la sección **Artifacts** de la ejecución.
 
 El artifact contiene el reporte PowerPoint, JTL, métricas JSON, gráfica y dashboard HTML de JMeter.
+
+## Corte automático por falta de respuestas exitosas
+
+JMeter detiene la prueba si transcurren 180 segundos sin ninguna respuesta exitosa. El contador
+comienza al arrancar la prueba y se reinicia cada vez que llega una respuesta correcta. Cuando se
+activa el corte, se genera `output/fail-fast.txt`, se publican los resultados parciales y GitHub
+Actions marca la ejecución en rojo.
 
 ## Cálculos
 
@@ -76,4 +85,3 @@ En PowerShell, activar el entorno con `.venv\\Scripts\\Activate.ps1` y escribir 
 ## Adaptación a otra API
 
 El JMX incluido conserva el endpoint de ejemplo recibido. Para usar una API interna se deben parametrizar el host, ruta, cabeceras y credenciales correspondientes. Los secretos deben permanecer en GitHub Secrets.
-

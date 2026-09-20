@@ -23,6 +23,10 @@ on:
         description: Usuario enviado a la API de ejemplo
         required: true
         default: "enrique"
+      scheduled_start:
+        description: "Inicio opcional en America/Lima (AAAA-MM-DD HH:MM); vacío = ahora"
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -34,7 +38,7 @@ env:
 jobs:
   performance-test:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 360
 
     steps:
       - name: Descargar código
@@ -45,6 +49,31 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
+
+      - name: Esperar hasta la hora programada
+        if: inputs.scheduled_start != ''
+        shell: bash
+        env:
+          SCHEDULED_START: ${{ inputs.scheduled_start }}
+        run: |
+          set -euo pipefail
+          wait_seconds="$(python - <<'PY'
+          import os
+          from datetime import datetime
+          from zoneinfo import ZoneInfo
+
+          zone = ZoneInfo("America/Lima")
+          requested = datetime.strptime(os.environ["SCHEDULED_START"], "%Y-%m-%d %H:%M").replace(tzinfo=zone)
+          seconds = int((requested - datetime.now(zone)).total_seconds())
+          if seconds < 0:
+              raise SystemExit("La hora programada ya pasó")
+          if seconds > 14400:
+              raise SystemExit("La hora programada no puede estar a más de 4 horas")
+          print(seconds)
+          PY
+          )"
+          echo "La prueba comenzará en ${wait_seconds} segundos (${SCHEDULED_START} America/Lima)"
+          sleep "${wait_seconds}"
 
       - name: Instalar dependencias del reporte
         run: pip install -r requirements.txt
@@ -76,7 +105,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p output
-          rm -rf output/jmeter-html output/results.jtl
+          rm -rf output/jmeter-html output/results.jtl output/fail-fast.txt
           jmeter -n \
             -t jmeter/performance-test.jmx \
             -l output/results.jtl \
@@ -86,6 +115,7 @@ jobs:
             -JDURATION_SECONDS="${{ inputs.duration_seconds }}" \
             -JLOOPS="${{ inputs.loops }}" \
             -JTARGET_USERNAME="${{ inputs.target_username }}" \
+            -JMAX_NO_SUCCESS_SECONDS="180" \
             -JRAPIDAPI_KEY="${RAPIDAPI_KEY}"
 
       - name: Calcular métricas y generar gráfica
@@ -117,7 +147,14 @@ jobs:
             output/results.jtl
             output/metrics.json
             output/load-chart.png
+            output/fail-fast.txt
             output/jmeter-html/
           if-no-files-found: warn
           retention-days: 30
 
+      - name: Marcar la ejecución como fallida si se activó el corte automático
+        if: always() && hashFiles('output/fail-fast.txt') != ''
+        shell: bash
+        run: |
+          cat output/fail-fast.txt
+          exit 1
