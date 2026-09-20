@@ -1,0 +1,123 @@
+name: JMeter performance test and PPTX report
+
+on:
+  workflow_dispatch:
+    inputs:
+      threads:
+        description: Usuarios concurrentes
+        required: true
+        default: "5"
+      ramp_seconds:
+        description: Duración del ramp-up en segundos
+        required: true
+        default: "1"
+      duration_seconds:
+        description: Duración máxima de la prueba en segundos
+        required: true
+        default: "50"
+      loops:
+        description: Iteraciones máximas por usuario
+        required: true
+        default: "50"
+      target_username:
+        description: Usuario enviado a la API de ejemplo
+        required: true
+        default: "enrique"
+
+permissions:
+  contents: read
+
+env:
+  JMETER_VERSION: "5.6.3"
+  TZ: America/Lima
+
+jobs:
+  performance-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Descargar código
+        uses: actions/checkout@v4
+
+      - name: Configurar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Instalar dependencias del reporte
+        run: pip install -r requirements.txt
+
+      - name: Instalar JMeter
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 \
+            "https://archive.apache.org/dist/jmeter/binaries/apache-jmeter-${JMETER_VERSION}.tgz" \
+            --output "${RUNNER_TEMP}/apache-jmeter.tgz"
+          tar -xzf "${RUNNER_TEMP}/apache-jmeter.tgz" -C "${RUNNER_TEMP}"
+          echo "${RUNNER_TEMP}/apache-jmeter-${JMETER_VERSION}/bin" >> "${GITHUB_PATH}"
+
+      - name: Validar secreto requerido
+        shell: bash
+        env:
+          RAPIDAPI_KEY: ${{ secrets.RAPIDAPI_KEY }}
+        run: |
+          if [[ -z "${RAPIDAPI_KEY}" ]]; then
+            echo "Falta configurar el secret RAPIDAPI_KEY" >&2
+            exit 1
+          fi
+
+      - name: Ejecutar prueba JMeter
+        shell: bash
+        env:
+          RAPIDAPI_KEY: ${{ secrets.RAPIDAPI_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p output
+          rm -rf output/jmeter-html output/results.jtl
+          jmeter -n \
+            -t jmeter/performance-test.jmx \
+            -l output/results.jtl \
+            -e -o output/jmeter-html \
+            -JTHREADS="${{ inputs.threads }}" \
+            -JRAMP_SECONDS="${{ inputs.ramp_seconds }}" \
+            -JDURATION_SECONDS="${{ inputs.duration_seconds }}" \
+            -JLOOPS="${{ inputs.loops }}" \
+            -JTARGET_USERNAME="${{ inputs.target_username }}" \
+            -JRAPIDAPI_KEY="${RAPIDAPI_KEY}"
+
+      - name: Calcular métricas y generar gráfica
+        if: always() && hashFiles('output/results.jtl') != ''
+        run: |
+          python scripts/analyze_jmeter.py \
+            --jtl output/results.jtl \
+            --metrics output/metrics.json \
+            --chart output/load-chart.png \
+            --timezone America/Lima
+
+      - name: Generar PPTX
+        if: always() && hashFiles('output/metrics.json') != ''
+        run: |
+          python scripts/generate_report.py \
+            --template template/Ejemplo.pptx \
+            --metrics output/metrics.json \
+            --chart output/load-chart.png \
+            --output "output/Reporte_Performance_${GITHUB_RUN_NUMBER}.pptx"
+          python scripts/validate_report.py "output/Reporte_Performance_${GITHUB_RUN_NUMBER}.pptx"
+
+      - name: Publicar resultados como artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: performance-report-${{ github.run_number }}
+          path: |
+            output/Reporte_Performance_*.pptx
+            output/results.jtl
+            output/metrics.json
+            output/load-chart.png
+            output/jmeter-html/
+          if-no-files-found: warn
+          retention-days: 30
+
