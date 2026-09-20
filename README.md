@@ -33,7 +33,7 @@ ${__P(RAPIDAPI_KEY,)}
 1. Abrir la pestaña **Actions**.
 2. Elegir **JMeter performance test and PPTX report**.
 3. Seleccionar **Run workflow**.
-4. Ingresar usuarios, ramp-up, duración, iteraciones y usuario objetivo.
+4. Seleccionar el servicio en el menú desplegable e ingresar usuarios, ramp-up, duración, iteraciones y usuario objetivo.
    Para programar el inicio, completar opcionalmente `scheduled_start` con el formato
    `AAAA-MM-DD HH:MM` en horario `America/Lima`. La hora puede estar hasta 4 horas en el futuro.
 5. Descargar `performance-report-<número>` desde la sección **Artifacts** de la ejecución.
@@ -84,4 +84,13 @@ En PowerShell, activar el entorno con `.venv\\Scripts\\Activate.ps1` y escribir 
 
 ## Adaptación a otra API
 
-El JMX incluido conserva el endpoint de ejemplo recibido. Para usar una API interna se deben parametrizar el host, ruta, cabeceras y credenciales correspondientes. Los secretos deben permanecer en GitHub Secrets.
+El workflow permite seleccionar el servicio desde un menú desplegable. Cada servicio debe tener un caso en el mapa del paso **Ejecutar prueba JMeter**, por ejemplo:
+
+```bash
+case "${SERVICE}" in
+  linkedin) jmx_file="jmeter/performance-test.jmx" ;;
+  pagos)    jmx_file="jmeter/pagos.jmx" ;;
+esac
+```
+
+Para agregar un servicio nuevo, agrega su `.jmx` dentro de `jmeter/`, añade la opción a `on.workflow_dispatch.inputs.service.options` y agrega su caso al mapa del workflow. Actualmente el menú incluye `LinkedIn (RapidAPI)` y `Consulta (RapidAPI)`. Ambos escenarios reciben los parámetros de carga del workflow y usan `RAPIDAPI_KEY` desde GitHub Secrets; la clave nunca se almacena dentro del JMX.

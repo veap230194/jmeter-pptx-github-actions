@@ -3,6 +3,13 @@ name: JMeter performance test and PPTX report
 on:
   workflow_dispatch:
     inputs:
+      service:
+        description: Servicio que se desea probar
+        required: true
+        type: choice
+        options:
+          - LinkedIn (RapidAPI)
+          - Consulta (RapidAPI)
       threads:
         description: Usuarios concurrentes
         required: true
@@ -102,12 +109,26 @@ jobs:
         shell: bash
         env:
           RAPIDAPI_KEY: ${{ secrets.RAPIDAPI_KEY }}
+          SERVICE: ${{ inputs.service }}
         run: |
           set -euo pipefail
+          case "${SERVICE}" in
+            "LinkedIn (RapidAPI)")
+              jmx_file="jmeter/performance-test.jmx"
+              ;;
+            "Consulta (RapidAPI)")
+              jmx_file="jmeter/Consulta.jmx"
+              ;;
+            *)
+              echo "Servicio no soportado: ${SERVICE}" >&2
+              exit 1
+              ;;
+          esac
+          echo "Ejecutando escenario: ${jmx_file}"
           mkdir -p output
           rm -rf output/jmeter-html output/results.jtl output/fail-fast.txt
           jmeter -n \
-            -t jmeter/performance-test.jmx \
+            -t "${jmx_file}" \
             -l output/results.jtl \
             -e -o output/jmeter-html \
             -JTHREADS="${{ inputs.threads }}" \
